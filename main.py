@@ -60,7 +60,7 @@ df_experts = df_clean_init[expert_cols]
 
 print(f"Загружено {len(df_ratings)} валидных анкет экспертов.")
 print(f"Количество оцениваемых признаков: {len(rating_cols)}")
-print("-"*50)
+print("-"*20)
 
 # 1. ОПИСАТЕЛЬНАЯ СТАТИСТИКА
 print("1. ОПИСАТЕЛЬНАЯ СТАТИСТИКА ПО ОБЪЕКТАМ")
@@ -75,28 +75,96 @@ desc_stats = pd.DataFrame({
 desc_stats.to_csv("Описательная_статистика.csv", encoding='utf-8-sig')
 print("Таблица описательной статистики сохранена в 'Описательная_статистика.csv'\n")
 
-# 2. ПЕРВИЧНАЯ ОЦЕНКА СОГЛАСОВАННОСТИ ЭКСПЕРТОВ
-print("2. ПЕРВИЧНАЯ ОЦЕНКА СОГЛАСОВАННОСТИ ЭКСПЕРТОВ")
+# ИНТЕГРАЛЬНЫЕ ОЦЕНКИ ЗАВЕДЕНИЙ
+places = [
+    "Усы лисы",
+    "Теремок",
+    "Вкусно – и точка",
+    "Burger King",
+    "Столовая на БМ",
+    "Rostic's",
+    "Евразия"
+]
+places_averages = {}
 
-m_experts_init, n_objects_init = df_ratings.shape
+for place in places:
+    place_cols = [col for col in df_ratings.columns if f"[{place}]" in col]
 
-# Корректная передача выборок в критерий Фридмана (по столбцам объектов)
-friedman_stat, friedman_p = stats.friedmanchisquare(*[df_ratings.iloc[:, i].values for i in range(n_objects_init)])
-print(f"Критерий Фридмана: χ² = {friedman_stat:.3f}, p-value = {friedman_p:.4f}")
+    if place_cols:
+        # Считаем среднее арифметическое по всем оценкам для этого заведения
+        places_averages[place] = df_ratings[place_cols].mean().mean()
+    else:
+        place_cols_lazy = [col for col in df_ratings.columns if place.split()[0] in col]
+        if place_cols_lazy:
+            places_averages[place] = df_ratings[place_cols_lazy].mean().mean()
+        else:
+            places_averages[place] = np.nan
 
-# Корректное вычисление рангов построчно для каждого эксперта отдельно
-ranks_init = np.array([stats.rankdata(df_ratings.iloc[i, :].values) for i in range(m_experts_init)])
-R_sums_init = ranks_init.sum(axis=0)
-S_init = np.sum((R_sums_init - R_sums_init.mean())**2)
-W_init = (12 * S_init) / (m_experts_init**2 * (n_objects_init**3 - n_objects_init))
-print(f"Коэффициент конкордации Кендалла (W): {W_init:.3f}\n")
+# датафрейм
+table3 = pd.DataFrame.from_dict(places_averages, orient='index', columns=['Средняя оценка'])
+table3 = table3.sort_values(by='Средняя оценка', ascending=False).round(2)
+print(table3)
 
-# 3. УДАЛЕНИЕ «ПЛОХИХ» ЭКСПЕРТОВ И ПЕРЕСЧЕТ
-print("3. АВТОМАТИЧЕСКОЕ ВЫЯВЛЕНИЕ И УДАЛЕНИЕ «ПЛОХИХ» ЭКСПЕРТОВ")
+# 2. АГРЕГАЦИЯ И ПРОВЕРКА РАЗЛИЧИЙ МЕЖДУ ЗАВЕДЕНИЯМИ
+print("\n2. АГРЕГАЦИЯ И ПРОВЕРКА РАЗЛИЧИЙ МЕЖДУ ЗАВЕДЕНИЯМИ")
 
+place_ratings = pd.DataFrame(index=df_ratings.index)
+for place in places:
+    place_cols = [col for col in df_ratings.columns if f"[{place}]" in col]
+    if place_cols:
+        place_ratings[place] = df_ratings[place_cols].mean(axis=1)
+    else:
+        place_cols_lazy = [col for col in df_ratings.columns if place.split()[0].lower() in col.lower()]
+        if place_cols_lazy:
+            place_ratings[place] = df_ratings[place_cols_lazy].mean(axis=1)
+        else:
+            place_ratings[place] = np.nan
+
+place_ratings_clean = place_ratings.dropna()
+m, k = place_ratings_clean.shape
+
+friedman_stat, friedman_p = stats.friedmanchisquare(
+    *[place_ratings_clean[col].values for col in place_ratings_clean.columns]
+)
+print(f"\nFriedman test: chi2 = {friedman_stat:.3f}, p-value = {friedman_p:.4f}")
+if friedman_p < 0.05:
+    print("H0 rejected: Significant differences exist between venues.")
+else:
+    print("H0 not rejected: No significant differences between venues.")
+
+ranks = place_ratings_clean.rank(axis=1, method='average')
+R_sums = ranks.sum(axis=0)
+S = np.sum((R_sums - R_sums.mean())**2)
+W = (12 * S) / (m**2 * (k**3 - k))
+print(f"Kendall W concordance coefficient: {W:.3f}")
+
+if friedman_p < 0.05:
+    from itertools import combinations
+    alpha_corrected = 0.05 / (k * (k - 1) / 2)
+    for p1, p2 in combinations(place_ratings_clean.columns, 2):
+        _, p_val = stats.wilcoxon(place_ratings_clean[p1], place_ratings_clean[p2])
+        sig = "*" if p_val < alpha_corrected else ""
+        print(f"{p1} vs {p2}: p={p_val:.4f} {sig}")
+    print(f"Bonferroni threshold: {alpha_corrected:.4f}")
+
+# 3. КОМПЛЕКСНАЯ ОЧИСТКА ВЫБОРКИ
+print("\n3. ИДЕНТИФИКАЦИЯ И УДАЛЕНИЕ СЛАБЫХ ЭКСПЕРТОВ")
+
+# Логический контроль
+bad_logic_experts = set()
+for idx, row in df_ratings.iterrows():
+    for place in places:
+        q1_col = [c for c in df_ratings.columns if place in c and "Порции в этом заведении достаточно большие" in c]
+        q3_col = [c for c in df_ratings.columns if place in c and "чувство сытости" in c]
+        if q1_col and q3_col:
+            val1 = row[q1_col[0]]
+            val3 = row[q3_col[0]]
+            if pd.notna(val1) and pd.notna(val3) and abs(val1 - val3) >= 3:
+                bad_logic_experts.add(idx)
+
+# Фильтрация по согласованности (Корреляция Спирмена)
 group_median = df_ratings.median(axis=0)
 
-# Безопасный расчет Спирмена с защитой от константных строк (NaN)
 def safe_spearman(row, median_vals):
     if row.var() == 0 or median_vals.var() == 0:
         return 0.0
@@ -104,150 +172,97 @@ def safe_spearman(row, median_vals):
     return 0.0 if np.isnan(corr) else corr
 
 corr_with_group = df_ratings.apply(lambda row: safe_spearman(row, group_median), axis=1)
-
 threshold = max(0.15, np.percentile(corr_with_group, 15))
-good_idx = corr_with_group[corr_with_group >= threshold].index
+bad_stat_experts = set(corr_with_group[corr_with_group < threshold].index)
+
+# Объединение и удаление
+all_bad_experts = bad_logic_experts.union(bad_stat_experts)
+good_idx = [i for i in df_ratings.index if i not in all_bad_experts]
 
 df_ratings_clean = df_ratings.loc[good_idx]
 df_experts_clean = df_experts.loc[good_idx]
 
-# Экспорт полной очищенной матрицы по требованиям задания
-df_ratings_clean.to_csv("Полная_матрица_оценок_очищенная.csv", encoding='utf-8-sig')
+# Пересчет согласованности для вывода
+n_clean = df_ratings_clean.shape[0]
+k_clean = df_ratings_clean.shape[1]
+stat_f_clean, p_val_f_clean = stats.friedmanchisquare(*[df_ratings_clean.iloc[i, :] for i in range(n_clean)])
+W_clean = stat_f_clean / (n_clean * (k_clean - 1))
 
-m_clean, n_objects_c = df_ratings_clean.shape
+print(f"Удалено по логическому противоречию (q1 vs q3): {len(bad_logic_experts)}")
+print(f"Удалено по низкой согласованности (Спирмен < {threshold:.2f}): {len(bad_stat_experts)}")
+print(f"Всего удалено уникальных экспертов: {len(all_bad_experts)}")
+print(f"Осталось валидных анкет (n): {n_clean}")
+print(f"Коэффициент конкордации Кендалла (W) после очистки: {W_clean:.3f}")
+print("-" * 50)
 
-friedman_stat_clean, friedman_p_clean = stats.friedmanchisquare(*[df_ratings_clean.iloc[:, i].values for i in range(n_objects_c)])
-ranks_clean = np.array([stats.rankdata(df_ratings_clean.iloc[i, :].values) for i in range(m_clean)])
-R_sums_clean = ranks_clean.sum(axis=0)
-S_clean = np.sum((R_sums_clean - R_sums_clean.mean())**2)
-W_clean = (12 * S_clean) / (m_clean**2 * (n_objects_c**3 - n_objects_c))
+# 4. ФАКТОРНЫЙ АНАЛИЗ
+print("\n4. ФАКТОРНЫЙ АНАЛИЗ")
+records = []
+q_names = [f"q{i}" for i in range(1, 12)]
 
-print(f"Корректный пересчет согласованности:")
-print(f"Коэффициент W: {W_init:.3f} -> {W_clean:.3f}")
-print("-"*50)
+for idx, row in df_ratings_clean.iterrows():
+    for place in places:
+        place_cols = [col for col in df_ratings_clean.columns if f"[{place}]" in col]
+        if len(place_cols) == 11:
+            record = {'expert_id': idx, 'place': place}
+            for i, col in enumerate(place_cols):
+                record[q_names[i]] = row[col]
+            records.append(record)
 
-# 4. ФАКТОРНЫЙ АНАЛИЗ ОБЪЕКТОВ
-print("4. ФАКТОРНЫЙ АНАЛИЗ (KMO, БАРТЛЕТТ, ВЫДЕЛЕНИЕ ФАКТОРОВ)")
+df_long = pd.DataFrame(records)
+df_fa_input = df_long[q_names].astype(float)
 
-low_variance_cols = df_ratings_clean.columns[df_ratings_clean.var() < 0.05]
-if len(low_variance_cols) > 0:
-    df_ratings_clean = df_ratings_clean.drop(columns=low_variance_cols)
+print(f"Размерность данных для FA: {df_fa_input.shape[0]} наблюдений на {df_fa_input.shape[1]} признаков.")
 
-np.random.seed(42)
-noise = np.random.normal(0, 0.0001, df_ratings_clean.shape)
-df_ratings_stable = df_ratings_clean + noise
+# 4.2 Тесты KMO и Бартлетта
+kmo_all, kmo_model = calculate_kmo(df_fa_input)
+print(f"Тест KMO: {kmo_model:.3f}")
 
-print(f"Финальное количество признаков для расчета FA: {df_ratings_stable.shape[1]}")
+bartlett_stat, bartlett_p = calculate_bartlett_sphericity(df_fa_input)
+print(f"Тест Бартлетта: χ² = {bartlett_stat:.1f}, p-value = {bartlett_p:.5f}")
 
-try:
-    kmo_all, kmo_model = calculate_kmo(df_ratings_stable)
-    print(f"Тест Кайзера-Мейкера-Олкина (KMO) общая мера: {kmo_model:.3f}")
-except Exception as e:
-    print(f"Не удалось рассчитать KMO: {e}")
+n_factors_target = 3
+fa_obj = FactorAnalyzer(n_factors=n_factors_target, rotation='varimax', method='principal')
+fa_obj.fit(df_fa_input)
 
-try:
-    bartlett_stat, bartlett_p = calculate_bartlett_sphericity(df_ratings_stable)
-    print(f"Тест сферичности Бартлетта: χ² = {abs(bartlett_stat):.1f}, p-value = {bartlett_p:.5f}")
-except Exception as e:
-    print(f"Не удалось рассчитать тест Бартлетта: {e}")
 
-eigenvalues, _ = np.linalg.eigh(df_ratings_stable.corr())
-eigenvalues = sorted(eigenvalues, reverse=True)
+loadings_df = pd.DataFrame(fa_obj.loadings_, index=q_names,
+                           columns=['Качество (F1)', 'Время (F2)', 'Экономия (F3)'])
+print("\nМатрица факторных нагрузок (11 вопросов x 3 фактора):")
+print(loadings_df.round(3))
+loadings_df.to_csv("Матрица_нагрузок_11_вопросов.csv", encoding='utf-8-sig')
 
-plt.figure(figsize=(8,5))
-plt.plot(range(1, len(eigenvalues)+1), eigenvalues, 'bo-', markersize=4)
-plt.axhline(y=1.0, color='r', linestyle='--', label='Порог Кайзера (1.0)')
-plt.xlabel('Номер фактора')
-plt.ylabel('Собственное значение')
-plt.title('График "Каменистая осыпь" (Scree Plot)')
-plt.legend()
-plt.grid(True, alpha=0.3)
-plt.tight_layout()
-plt.savefig("2_Scree_Plot.png", dpi=300)
-plt.close()
-print("График Scree Plot успешно сохранен: 2_Scree_Plot.png")
+# факторные оценки
+factor_scores = fa_obj.transform(df_fa_input)
+df_long[['Score_Quality', 'Score_Time', 'Score_Economy']] = factor_scores
 
-n_factors = max(2, int(np.sum(np.array(eigenvalues) > 1.0)))
-n_factors = min(n_factors, 5)
-print(f"Определено оптимальное число факторов для отчета: {n_factors}")
+# 5. РЕГРЕССИОННЫЙ АНАЛИЗ (ПО ТЕОРЕТИЧЕСКИМ БЛОКАМ)
+print("\n5. РЕГРЕССИОННЫЙ АНАЛИЗ (ТЕОРЕТИЧЕСКИЕ ИНДЕКСЫ)")
 
-fa_obj = FactorAnalyzer(n_factors=n_factors, rotation='varimax', method='principal')
-fa_obj.fit(df_ratings_stable)
+# Определяем ключевые слова для поиска нужных столбцов по трем факторам
+q_quality = ["Порции в этом заведении достаточно большие", "уверенность в свежести", "чувство сытости", "чистота и порядок"]
+q_time = ["Время ожидания", "быстрое обслуживание", "Путь до заведения"]
+q_economy = ["Цена блюд соответствуют", "Порции в заведении соответствуют", "выгодные цены", "различные акции"]
 
-# Вычисление и вывод explained variance (объясненной дисперсии факторов объектов)
-obj_variance = fa_obj.get_factor_variance()
-obj_variance_df = pd.DataFrame(obj_variance, index=['SS Loadings', 'Proportion Var', 'Cumulative Var'],
-                               columns=[f'Фактор_{i+1}' for i in range(n_factors)])
-print("\nТаблица объясненной дисперсии факторов объектов:")
-print(obj_variance_df.round(3))
-obj_variance_df.to_csv("Дисперсия_факторов_объектов.csv", encoding='utf-8-sig')
+expert_indices = pd.DataFrame(index=df_ratings_clean.index)
 
-loadings_df = pd.DataFrame(fa_obj.loadings_, index=df_ratings_stable.columns,
-                           columns=[f'Фактор_{i+1}' for i in range(n_factors)])
-loadings_df.to_csv("Матрица_нагрузок_объектов.csv", encoding='utf-8-sig')
-print("\nМатрица факторных нагрузок (топ-10 признаков):")
-print(loadings_df.abs().round(3).head(10))
+def get_cols(keywords):
+    return [c for c in df_ratings_clean.columns if any(kw in c for kw in keywords)]
 
-# Словесная автоматическая интерпретация латентных факторов объектов
-print("\nИнтерпретация структуры факторов объектов (нагрузка > 0.4):")
-for col in loadings_df.columns:
-    strong_vars = loadings_df.index[loadings_df[col].abs() > 0.4].tolist()
-    print(f"  В {col} входят: {', '.join(strong_vars[:3])}...")
+# Считаем средний балл каждого эксперт
+expert_indices['Фактор_Качество'] = df_ratings_clean[get_cols(q_quality)].mean(axis=1)
+expert_indices['Фактор_Время'] = df_ratings_clean[get_cols(q_time)].mean(axis=1)
+expert_indices['Фактор_Экономия'] = df_ratings_clean[get_cols(q_economy)].mean(axis=1)
 
-factor_scores_arr = fa_obj.transform(df_ratings_stable)
-factor_scores = pd.DataFrame(factor_scores_arr, index=df_ratings_stable.index,
-                             columns=[f'Фактор_{i+1}' for i in range(n_factors)])
-factor_scores.to_csv("Факторные_оценки_объектов.csv", encoding='utf-8-sig')
-print("-"*50)
+y = pd.to_numeric(df_experts_clean["Насколько для вас важен состав еды по КБЖУ?"], errors='coerce')
+reg_data = pd.concat([y, expert_indices], axis=1).dropna()
 
-# 4.1 ФАКТОРНЫЙ АНАЛИЗ ХАРАКТЕРИСТИК ЭКСПЕРТОВ
-print("4.1 ФАКТОРНЫЙ АНАЛИЗ ХАРАКТЕРИСТИК ЭКСПЕРТОВ")
+y_clean = reg_data["Насколько для вас важен состав еды по КБЖУ?"]
+X_clean = add_constant(reg_data[['Фактор_Качество', 'Фактор_Время', 'Фактор_Экономия']])
 
-df_experts_numeric = pd.get_dummies(df_experts_clean, drop_first=True).astype(float)
-noise_exp = np.random.normal(0, 0.0001, df_experts_numeric.shape)
-df_experts_stable = df_experts_numeric + noise_exp
+model = OLS(y_clean, X_clean).fit()
 
-eigenvalues_exp, _ = np.linalg.eigh(df_experts_stable.corr())
-eigenvalues_exp = sorted(eigenvalues_exp, reverse=True)
-n_factors_exp = max(1, int(np.sum(np.array(eigenvalues_exp) > 1.0)))
-
-print(f"Количество преобразованных признаков экспертов для анализа: {df_experts_stable.shape[1]}")
-print(f"Определено оптимальное число факторов экспертов: {n_factors_exp}")
-
-fa_exp_obj = FactorAnalyzer(n_factors=n_factors_exp, rotation='varimax', method='principal')
-fa_exp_obj.fit(df_experts_stable)
-
-# Расчет explained variance для факторов характеристик экспертов
-exp_variance = fa_exp_obj.get_factor_variance()
-exp_variance_df = pd.DataFrame(exp_variance, index=['SS Loadings', 'Proportion Var', 'Cumulative Var'],
-                               columns=[f'Эксперт_Фактор_{i+1}' for i in range(n_factors_exp)])
-print("\nТаблица объясненной дисперсии характеристик экспертов:")
-print(exp_variance_df.round(3))
-
-loadings_exp_df = pd.DataFrame(fa_exp_obj.loadings_, index=df_experts_numeric.columns,
-                               columns=[f'Эксперт_Фактор_{i+1}' for i in range(n_factors_exp)])
-print("\nМатрица нагрузок характеристика экспертов:")
-print(loadings_exp_df.round(3))
-loadings_exp_df.to_csv("Матрица_нагрузок_экспертов.csv", encoding='utf-8-sig')
-print("-"*50)
-
-# 5. РЕГРЕССИОННЫЙ АНАЛИЗ
-print("5. РЕГРЕССИОННЫЙ АНАЛИЗ (OLS)")
-
-y = df_experts_clean[target_col].astype(float)
-X = factor_scores.copy()
-X = add_constant(X)
-
-model = OLS(y, X).fit()
-
-with open("Итоговые_результаты_регрессии.txt", "w", encoding="utf-8") as f:
+with open("Итоговые_результаты_регрессии_KBZHU.txt", "w", encoding="utf-8") as f:
     f.write(model.summary().as_text())
 
 print(model.summary())
-
-sig_vars = [var for var, p in model.pvalues.items() if p < 0.05 and var != 'const']
-if sig_vars:
-    print(f"\nВывод для отчета: На важность КБЖУ статистически значимо влияют: {', '.join(sig_vars)}.")
-    print(f"   Модель объясняет {model.rsquared*100:.1f}% дисперсии (R-squared = {model.rsquared:.3f}).")
-else:
-    print(f"\nВывод для отчета: Выделенные латентные факторы не имеют линейного значимого влияния на важность КБЖУ (p > 0.05).")
