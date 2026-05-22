@@ -1,0 +1,27 @@
+                                         OLS Regression Results                                        
+=======================================================================================================
+Dep. Variable:     Насколько для вас важен состав еды по КБЖУ?   R-squared:                       0.032
+Model:                                                     OLS   Adj. R-squared:                 -0.120
+Method:                                          Least Squares   F-statistic:                    0.2116
+Date:                                         Sat, 23 May 2026   Prob (F-statistic):              0.887
+Time:                                                 01:05:21   Log-Likelihood:                -37.684
+No. Observations:                                           23   AIC:                             83.37
+Df Residuals:                                               19   BIC:                             87.91
+Df Model:                                                    3                                         
+Covariance Type:                                     nonrobust                                         
+==============================================================================
+                 coef    std err          t      P>|t|      [0.025      0.975]
+------------------------------------------------------------------------------
+const          2.7482      2.016      1.363      0.189      -1.471       6.968
+Quality       -0.4995      1.408     -0.355      0.727      -3.447       2.448
+Time          -0.1518      0.963     -0.158      0.876      -2.167       1.864
+Economy        0.5278      0.879      0.601      0.555      -1.312       2.367
+==============================================================================
+Omnibus:                        2.547   Durbin-Watson:                   1.842
+Prob(Omnibus):                  0.280   Jarque-Bera (JB):                1.886
+Skew:                           0.535   Prob(JB):                        0.390
+Kurtosis:                       2.092   Cond. No.                         44.5
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
