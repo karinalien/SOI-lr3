@@ -3,8 +3,8 @@
 Dep. Variable:     Насколько для вас важен состав еды по КБЖУ?   R-squared:                       0.058
 Model:                                                     OLS   Adj. R-squared:                 -0.178
 Method:                                          Least Squares   F-statistic:                    0.2463
-Date:                                         Wed, 20 May 2026   Prob (F-statistic):              0.937
-Time:                                                 21:49:05   Log-Likelihood:                -41.766
+Date:                                         Fri, 22 May 2026   Prob (F-statistic):              0.937
+Time:                                                 13:30:35   Log-Likelihood:                -41.766
 No. Observations:                                           26   AIC:                             95.53
 Df Residuals:                                               20   BIC:                             103.1
 Df Model:                                                    5                                         

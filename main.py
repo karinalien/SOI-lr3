@@ -185,7 +185,6 @@ obj_variance_df.to_csv("Дисперсия_факторов_объектов.csv
 loadings_df = pd.DataFrame(fa_obj.loadings_, index=df_ratings_stable.columns,
                            columns=[f'Фактор_{i+1}' for i in range(n_factors)])
 loadings_df.to_csv("Матрица_нагрузок_объектов.csv", encoding='utf-8-sig')
-
 print("\nМатрица факторных нагрузок (топ-10 признаков):")
 print(loadings_df.abs().round(3).head(10))
 
@@ -201,7 +200,7 @@ factor_scores = pd.DataFrame(factor_scores_arr, index=df_ratings_stable.index,
 factor_scores.to_csv("Факторные_оценки_объектов.csv", encoding='utf-8-sig')
 print("-"*50)
 
-# 4.1 ФАКТОРНЫЙ АНАЛИЗ ХАРАКТЕРИСТИК ЭКСПЕРТОВ (Выполнение п. 1.4 задания)
+# 4.1 ФАКТОРНЫЙ АНАЛИЗ ХАРАКТЕРИСТИК ЭКСПЕРТОВ
 print("4.1 ФАКТОРНЫЙ АНАЛИЗ ХАРАКТЕРИСТИК ЭКСПЕРТОВ")
 
 df_experts_numeric = pd.get_dummies(df_experts_clean, drop_first=True).astype(float)
