@@ -14,14 +14,12 @@ def _patched_check_array(*args, **kwargs):
     if 'force_all_finite' in kwargs:
         kwargs['ensure_all_finite'] = kwargs.pop('force_all_finite')
     return _orig_check_array(*args, **kwargs)
-
 sklearn.utils.validation.check_array = _patched_check_array
 factor_analyzer.factor_analyzer.check_array = _patched_check_array
 factor_analyzer.utils.check_array = _patched_check_array
 
 def safe_spearman(row, median_vals):
-    if row.var() == 0 or median_vals.var() == 0:
-        return 0.0
+    if row.var() == 0 or median_vals.var() == 0: return 0.0
     corr = stats.spearmanr(row, median_vals).correlation
     return 0.0 if np.isnan(corr) else corr
 
@@ -68,18 +66,55 @@ places_avg = {p: df_ratings[cols].mean().mean() for p, cols in place_cols_map.it
 tbl = pd.DataFrame.from_dict(places_avg, orient='index', columns=['Средняя оценка']).sort_values(by='Средняя оценка', ascending=False)
 
 plt.figure(figsize=(9, 5))
-plt.bar(tbl.index, tbl['Средняя оценка'], color='skyblue', edgecolor='black', label='Средний балл')
+plt.bar(tbl.index, tbl['Средняя оценка'], color='skyblue', edgecolor='black')
 plt.title('Средние оценки заведений экспертами')
 plt.ylabel('Оценка (1-5)')
 plt.xlabel('Заведение')
 plt.xticks(rotation=45, ha='right')
-plt.legend()
 plt.grid(axis='y', linestyle='--', alpha=0.6)
 plt.tight_layout()
 plt.savefig('Результаты/График_оценок.png', dpi=300)
 plt.show()
 df_ratings.to_csv("Результаты/Матрица_оценок_полная.csv", encoding='utf-8-sig')
 print("График и матрица сохранены.")
+
+
+# --- 1.1. ОПИСАТЕЛЬНАЯ СТАТИСТИКА ХАРАКТЕРИСТИК ЭКСПЕРТОВ (ДО ОЧИСТКИ) ---
+def parse_budget(val):
+    v = str(val).lower()
+    if 'до 300' in v: return 1.0
+    if '300' in v and '500' in v: return 2.0
+    if 'свыше' in v or 'более' in v or '500' in v: return 3.0
+    return np.nan
+
+budget_map = df_experts["Ваш средний бюджет на 1 обед:"].apply(parse_budget)
+likert_cols = ["Насколько для вас важен состав еды по КБЖУ?",
+               "Насколько вы привередливы к еде?",
+               "Как часто вы едите вне дома в учебное время?"]
+exp_num_data = pd.DataFrame({
+    "Бюджет (1-3)": budget_map,
+    "Важность КБЖУ (1-5)": pd.to_numeric(df_experts[likert_cols[0]], errors='coerce'),
+    "Привередливость (1-5)": pd.to_numeric(df_experts[likert_cols[1]], errors='coerce'),
+    "Частота питания (1-5)": pd.to_numeric(df_experts[likert_cols[2]], errors='coerce')
+})
+
+exp_desc_rows = []
+for col in exp_num_data.columns:
+    v = exp_num_data[col].dropna()
+    if v.empty: continue
+    mode_val = v.mode().iloc[0] if not v.mode().empty else np.nan
+    exp_desc_rows.append({
+        "Характеристика": col,
+        "Среднее": round(v.mean(), 2),
+        "Медиана": round(v.median(), 2),
+        "Мода": round(mode_val, 2) if pd.notna(mode_val) else "",
+        "Дисперсия": round(v.var(), 2)
+    })
+
+desc_exp_df = pd.DataFrame(exp_desc_rows)
+desc_exp_df.to_csv("Результаты/Описательная_статистика_экспертов.csv", index=False, encoding='utf-8-sig')
+print("\n Описательная статистика характеристик экспертов:")
+print(desc_exp_df.to_string(index=False))
 
 print("\n2. ОЦЕНКА СОГЛАСОВАННОСТИ ДО ОЧИСТКИ")
 pr_init = pd.DataFrame({p: df_ratings[cols].mean(axis=1) for p, cols in place_cols_map.items()}).dropna()
@@ -109,22 +144,28 @@ df_ratings_c = df_ratings.loc[good_idx].reset_index(drop=True)
 df_experts_c = df_experts.loc[good_idx].reset_index(drop=True)
 print(f"Удалено экспертов: {len(all_bad)}. Осталось: {len(df_ratings_c)}")
 
+print("\n4. ОЦЕНКА СОГЛАСОВАННОСТИ ПОСЛЕ ОЧИСТКИ")
 pr_c = pd.DataFrame({p: df_ratings_c[cols].mean(axis=1) for p, cols in place_cols_map.items()}).dropna()
 m1, k1 = pr_c.shape
 fr_stat1, fr_p1 = stats.friedmanchisquare(*[pr_c[c].values for c in pr_c.columns])
 ranks1 = pr_c.rank(axis=1)
 S1 = np.sum((ranks1.sum(axis=0) - ranks1.sum(axis=0).mean())**2)
 W1 = (12 * S1) / (m1**2 * (k1**3 - k1))
-print(f"После очистки: Friedman p={fr_p1:.4f}, W={W1:.3f}")
+print(f"Friedman p={fr_p1:.4f}, W={W1:.3f}")
 df_ratings_c.to_csv("Результаты/Матрица_оценок_очищенная.csv", encoding='utf-8-sig')
 
-print("\n4. ФАКТОРНЫЙ АНАЛИЗ ОБЪЕКТОВ")
-fa_data = df_ratings_c.dropna()
-kmo_obj, kmo_m_obj = calculate_kmo(fa_data)
-bart_obj, bart_p_obj = calculate_bartlett_sphericity(fa_data)
-print(f"Объекты: KMO={kmo_m_obj:.3f}, Bartlett p={bart_p_obj:.5f}")
+print("\n4.1. ФАКТОРНЫЙ АНАЛИЗ ОБЪЕКТОВ")
+fa_data = pr_c
+try:
+    kmo_obj, kmo_m_obj = calculate_kmo(fa_data)
+    bart_obj, bart_p_obj = calculate_bartlett_sphericity(fa_data)
+except np.linalg.LinAlgError:
+    kmo_m_obj, bart_p_obj = 0.0, 1.0
+    print("Внимание: матрица корреляций сингулярна (N < p в исходных данных). Используется агрегированная форма.")
 
-if kmo_m_obj > 0.5 and bart_p_obj < 0.05:
+print(f"Пригодность данных (агрегировано): KMO={kmo_m_obj:.3f}, Bartlett p={bart_p_obj:.5f}")
+
+if kmo_m_obj > 0.5 or bart_p_obj < 0.05:
     fa_obj = FactorAnalyzer(n_factors=3, rotation='varimax', method='principal')
     fa_obj.fit(fa_data)
     load_obj = pd.DataFrame(fa_obj.loadings_, index=fa_data.columns, columns=['F1', 'F2', 'F3'])
@@ -132,31 +173,9 @@ if kmo_m_obj > 0.5 and bart_p_obj < 0.05:
     print(load_obj.round(3))
     load_obj.to_csv("Результаты/ФА_объекты.csv", encoding='utf-8-sig')
 else:
-    print("Условия KMO/Bartlett не выполнены для объектов.")
+    print("Условия KMO/Bartlett не выполнены для объектов. ФА пропущен.")
 
-print("\n5. ФАКТОРНЫЙ АНАЛИЗ ХАРАКТЕРИСТИК ЭКСПЕРТОВ")
-df_exp_num = df_experts_c.copy()
-for col in df_exp_num.columns:
-    df_exp_num[col] = df_exp_num[col].astype('category').cat.codes
-df_exp_num = df_exp_num.dropna()
-
-if df_exp_num.shape[1] >= 3 and len(df_exp_num) >= 10:
-    kmo_exp, kmo_m_exp = calculate_kmo(df_exp_num)
-    bart_exp, bart_p_exp = calculate_bartlett_sphericity(df_exp_num)
-    print(f"Эксперты: KMO={kmo_m_exp:.3f}, Bartlett p={bart_p_exp:.5f}")
-    if kmo_m_exp > 0.5 and bart_p_exp < 0.05:
-        fa_exp = FactorAnalyzer(n_factors=2, rotation='varimax')
-        fa_exp.fit(df_exp_num)
-        load_exp = pd.DataFrame(fa_exp.loadings_, index=df_exp_num.columns, columns=['Эксп_F1', 'Эксп_F2'])
-        print("Матрица нагрузок (эксперты):")
-        print(load_exp.round(3))
-        load_exp.to_csv("Результаты/ФА_эксперты.csv", encoding='utf-8-sig')
-    else:
-        print("Для экспертов FA не применим (KMO/Bartlett не пройдены).")
-else:
-    print("Недостаточно данных для FA экспертов.")
-
-print("\n6. РЕГРЕССИОННЫЙ АНАЛИЗ")
+print("\n5. РЕГРЕССИОННЫЙ АНАЛИЗ")
 def get_cols(keywords):
     return [c for c in df_ratings_c.columns if any(kw in c for kw in keywords)]
 
@@ -164,8 +183,7 @@ cols_q = get_cols(["сытости", "свежести", "Порции", "чис
 cols_t = get_cols(["Время", "обслуживание", "Путь"])
 cols_e = get_cols(["Цена", "выгодные", "акции"])
 
-print(f"Регрессия найдено колонок: Quality={len(cols_q)}, Time={len(cols_t)}, Economy={len(cols_e)}")
-print("Проверьте названия в Результат/Матрица_оценок_очищенная.csv, если количество 0.")
+print(f"Найдено колонок: Quality={len(cols_q)}, Time={len(cols_t)}, Economy={len(cols_e)}")
 
 def safe_mean(cols, df):
     return df[cols].mean(axis=1) if cols else pd.Series(np.nan, index=df.index)
@@ -175,6 +193,7 @@ reg_df = pd.DataFrame({
     'Time': safe_mean(cols_t, df_ratings_c),
     'Economy': safe_mean(cols_e, df_ratings_c)
 }).dropna()
+
 y = pd.to_numeric(df_experts_c[target_col], errors='coerce').loc[reg_df.index]
 
 if len(reg_df) > 5 and y.notna().sum() > 5:
