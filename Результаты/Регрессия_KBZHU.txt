@@ -1,26 +1,26 @@
                                          OLS Regression Results                                        
 =======================================================================================================
-Dep. Variable:     Насколько для вас важен состав еды по КБЖУ?   R-squared:                       0.032
-Model:                                                     OLS   Adj. R-squared:                 -0.120
-Method:                                          Least Squares   F-statistic:                    0.2116
-Date:                                         Sat, 23 May 2026   Prob (F-statistic):              0.887
-Time:                                                 01:05:21   Log-Likelihood:                -37.684
-No. Observations:                                           23   AIC:                             83.37
-Df Residuals:                                               19   BIC:                             87.91
+Dep. Variable:     Насколько для вас важен состав еды по КБЖУ?   R-squared:                       0.019
+Model:                                                     OLS   Adj. R-squared:                 -0.144
+Method:                                          Least Squares   F-statistic:                    0.1171
+Date:                                         Mon, 25 May 2026   Prob (F-statistic):              0.949
+Time:                                                 00:38:57   Log-Likelihood:                -36.532
+No. Observations:                                           22   AIC:                             81.06
+Df Residuals:                                               18   BIC:                             85.43
 Df Model:                                                    3                                         
 Covariance Type:                                     nonrobust                                         
 ==============================================================================
                  coef    std err          t      P>|t|      [0.025      0.975]
 ------------------------------------------------------------------------------
-const          2.7482      2.016      1.363      0.189      -1.471       6.968
-Quality       -0.4995      1.408     -0.355      0.727      -3.447       2.448
-Time          -0.1518      0.963     -0.158      0.876      -2.167       1.864
-Economy        0.5278      0.879      0.601      0.555      -1.312       2.367
+const          2.7822      2.126      1.309      0.207      -1.685       7.249
+Quality       -0.5382      1.547     -0.348      0.732      -3.789       2.713
+Time          -0.1709      1.026     -0.167      0.870      -2.325       1.984
+Economy        0.5781      1.151      0.502      0.621      -1.839       2.995
 ==============================================================================
-Omnibus:                        2.547   Durbin-Watson:                   1.842
-Prob(Omnibus):                  0.280   Jarque-Bera (JB):                1.886
-Skew:                           0.535   Prob(JB):                        0.390
-Kurtosis:                       2.092   Cond. No.                         44.5
+Omnibus:                        2.827   Durbin-Watson:                   1.536
+Prob(Omnibus):                  0.243   Jarque-Bera (JB):                1.885
+Skew:                           0.515   Prob(JB):                        0.390
+Kurtosis:                       2.002   Cond. No.                         44.3
 ==============================================================================
 
 Notes:
