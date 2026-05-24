@@ -168,7 +168,7 @@ try:
     pd.DataFrame({
         "Показатель": ["KMO", "Bartlett p-value", "Статус"],
         "Значение": [round(kmo_m_exp, 3), round(bart_p_exp, 4), "Неприменим"]
-    }).to_csv("Результаты/рименимость_ФА_экспертов.csv", index=False, encoding='utf-8-sig')
+    }).to_csv("Результаты/Применимость_ФА_экспертов.csv", index=False, encoding='utf-8-sig')
 except Exception as e:
     print(f"⚠ Ошибка расчёта: {e}")
 
@@ -201,7 +201,7 @@ friedman_table = pd.DataFrame({
         decision
     ]
 })
-friedman_table.to_csv("Результаты/Таблица4_Фридман_до_очистки.csv", index=False, encoding='utf-8-sig')
+friedman_table.to_csv("Результаты/Фридман_до_очистки.csv", index=False, encoding='utf-8-sig')
 print("\nРезультаты критерия Фридмана (до очистки данных):")
 print(friedman_table.to_string(index=False))
 
@@ -228,7 +228,7 @@ for i in range(len(places_list)):
         })
         print(f"{p1:<20} {p2:<20} {p_val:>12.4f} {'Да' if is_sig else 'Нет':>10}")
 
-pd.DataFrame(posthoc_results).to_csv("Результаты/Таблица4_PostHoc_Фридман.csv",
+pd.DataFrame(posthoc_results).to_csv("Результаты/PostHoc_Фридман.csv",
                                      index=False, encoding='utf-8-sig')
 
 print("\n3. ОЧИСТКА ВЫБОРКИ")
@@ -259,8 +259,10 @@ S1 = np.sum((ranks1.sum(axis=0) - ranks1.sum(axis=0).mean())**2)
 W1 = (12 * S1) / (m1**2 * (k1**3 - k1))
 print(f"Friedman p={fr_p1:.4f}, W={W1:.3f}")
 
-# РЕЗУЛЬТАТЫ КРИТЕРИЯ ФРИДМАНА
+df_ratings_c.to_csv("Результаты/Полная_матрица_оценок_очищенная.csv", encoding='utf-8-sig')
+print("Очищенная матрица оценок сохранена: Полная_матрица_оценок_очищенная.csv")
 decision1 = "H₀ отвергается" if fr_p1 < alpha else "H₀ не отвергается"
+
 friedman_table_clean = pd.DataFrame({
     "Показатель": [
         "Количество экспертов (n)",
@@ -341,6 +343,7 @@ try:
 
 except np.linalg.LinAlgError:
     print("Ошибка: матрица сингулярна, тесты и ФА не вычислены.")
+
 print("\n5. РЕГРЕССИОННЫЙ АНАЛИЗ")
 def get_cols(keywords):
     return [c for c in df_ratings_c.columns if any(kw in c for kw in keywords)]

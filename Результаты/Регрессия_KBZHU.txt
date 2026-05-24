@@ -4,7 +4,7 @@ Dep. Variable:     Насколько для вас важен состав ед
 Model:                                                     OLS   Adj. R-squared:                 -0.144
 Method:                                          Least Squares   F-statistic:                    0.1171
 Date:                                         Mon, 25 May 2026   Prob (F-statistic):              0.949
-Time:                                                 00:38:57   Log-Likelihood:                -36.532
+Time:                                                 01:21:09   Log-Likelihood:                -36.532
 No. Observations:                                           22   AIC:                             81.06
 Df Residuals:                                               18   BIC:                             85.43
 Df Model:                                                    3                                         
