@@ -24,6 +24,15 @@ def safe_spearman(row, median_vals):
     if row.var() == 0 or median_vals.var() == 0: return 0.0
     corr = stats.spearmanr(row, median_vals).correlation
     return 0.0 if np.isnan(corr) else corr
+def format_p(p_val, is_russian=True):
+ #Форматирует p-value
+    if p_val < 0.0001:
+        formatted = f"{p_val:.2e}".replace(".", ",")
+        if is_russian:
+            formatted = formatted.replace("e", "·10^")
+        return formatted
+    else:
+        return f"{p_val:.4f}".replace(".", ",")
 
 warnings.filterwarnings('ignore')
 plt.rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans']
@@ -170,7 +179,7 @@ try:
         "Значение": [round(kmo_m_exp, 3), round(bart_p_exp, 4), "Неприменим"]
     }).to_csv("Результаты/Применимость_ФА_экспертов.csv", index=False, encoding='utf-8-sig')
 except Exception as e:
-    print(f"⚠ Ошибка расчёта: {e}")
+    print(f"Ошибка расчёта: {e}")
 
 print("\n2. ОЦЕНКА СОГЛАСОВАННОСТИ ДО ОЧИСТКИ")
 pr_init = pd.DataFrame({p: df_ratings[cols].mean(axis=1) for p, cols in place_cols_map.items()}).dropna()
@@ -231,6 +240,59 @@ for i in range(len(places_list)):
 pd.DataFrame(posthoc_results).to_csv("Результаты/PostHoc_Фридман.csv",
                                      index=False, encoding='utf-8-sig')
 
+print("\n2.1. ФАКТОРНЫЙ АНАЛИЗ ОБЪЕКТОВ (ДО ОЧИСТКИ)")
+fa_data_init = pr_init
+print(f"Матрица данных: {fa_data_init.shape[0]} экспертов × {fa_data_init.shape[1]} заведений")
+
+try:
+    kmo_init, kmo_m_init = calculate_kmo(fa_data_init)
+    bart_stat_init, bart_p_init = calculate_bartlett_sphericity(fa_data_init)
+
+    print(f"KMO = {kmo_m_init:.3f}, Бартлетт: χ² = {bart_stat_init:.3f}, p = {format_p(bart_p_init)}")
+
+    with open("Результаты/Тесты_ФА_объекты_до_очистки.txt", "w", encoding="utf-8") as f:
+        f.write(f"KMO: {kmo_m_init:.3f}\n")
+        f.write(f"Bartlett chi2: {bart_stat_init:.3f}\n")
+        f.write(f"Bartlett p: {format_p(bart_p_init)}\n")
+
+    n_factors_init = 3
+    fa_obj_init = FactorAnalyzer(n_factors=n_factors_init, rotation='varimax', method='principal')
+    fa_obj_init.fit(fa_data_init)
+
+    # Матрица нагрузок
+    load_obj_init = pd.DataFrame(
+        fa_obj_init.loadings_,
+        index=fa_data_init.columns,
+        columns=[f'F{i + 1}' for i in range(n_factors_init)]
+    ).round(3)
+
+    print("\nМатрица нагрузок (объекты, до очистки):")
+    print(load_obj_init.to_string())
+    load_obj_init.to_csv("Результаты/ФА_объекты_до_очистки.csv", encoding='utf-8-sig')
+
+    # Объяснённая дисперсия
+    variance_init = fa_obj_init.get_factor_variance()
+    variance_init_dict = {
+        "Показатель": ["SS Loadings", "Proportion Var", "Cumulative Var"]
+    }
+    for j in range(n_factors_init):
+        variance_init_dict[f"Фактор {j + 1}"] = [
+            round(float(variance_init[0][j]), 4),
+            round(float(variance_init[1][j]), 4),
+            round(float(variance_init[2][j]), 4)
+        ]
+
+    variance_init_df = pd.DataFrame(variance_init_dict)
+    variance_init_df.to_csv("Результаты/Объяснённая_дисперсия_объекты_до_очистки.csv",
+                            index=False, encoding='utf-8-sig')
+    print("\nОбъяснённая дисперсия (объекты, до очистки):")
+    print(variance_init_df.to_string(index=False))
+
+except np.linalg.LinAlgError:
+    print("⚠ Ошибка: матрица сингулярна, тесты и ФА для объектов (до очистки) не вычислены.")
+except Exception as e:
+    print(f"Ошибка при ФА объектов (до очистки): {e}")
+
 print("\n3. ОЧИСТКА ВЫБОРКИ")
 bad_logic = set()
 for idx, row in df_ratings.iterrows():
@@ -285,18 +347,6 @@ friedman_table_clean.to_csv("Результаты/Фридман_после_оч
 print("\n Результаты критерия Фридмана (после очистки):")
 print(friedman_table_clean.to_string(index=False))
 print("\n4.1. ФАКТОРНЫЙ АНАЛИЗ ОБЪЕКТОВ")
-
-
-def format_p(p_val, is_russian=True):
- #Форматирует p-value
-    if p_val < 0.0001:
-        formatted = f"{p_val:.2e}".replace(".", ",")
-        if is_russian:
-            formatted = formatted.replace("e", "·10^")
-        return formatted
-    else:
-        return f"{p_val:.4f}".replace(".", ",")
-
 
 fa_data = pr_c
 try:
