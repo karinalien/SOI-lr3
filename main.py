@@ -244,6 +244,10 @@ print("\n2.1. ФАКТОРНЫЙ АНАЛИЗ ОБЪЕКТОВ (ДО ОЧИСТ�
 fa_data_init = pr_init
 print(f"Матрица данных: {fa_data_init.shape[0]} экспертов × {fa_data_init.shape[1]} заведений")
 
+print("\n2.1. ФАКТОРНЫЙ АНАЛИЗ ОБЪЕКТОВ (ДО ОЧИСТКИ)")
+fa_data_init = pr_init
+print(f"Матрица данных: {fa_data_init.shape[0]} экспертов × {fa_data_init.shape[1]} заведений")
+
 try:
     kmo_init, kmo_m_init = calculate_kmo(fa_data_init)
     bart_stat_init, bart_p_init = calculate_bartlett_sphericity(fa_data_init)
@@ -255,15 +259,18 @@ try:
         f.write(f"Bartlett chi2: {bart_stat_init:.3f}\n")
         f.write(f"Bartlett p: {format_p(bart_p_init)}\n")
 
-    n_factors_init = 3
-    fa_obj_init = FactorAnalyzer(n_factors=n_factors_init, rotation='varimax', method='principal')
+    n_factors_requested = 3
+    fa_obj_init = FactorAnalyzer(n_factors=n_factors_requested, rotation='varimax', method='principal')
     fa_obj_init.fit(fa_data_init)
+
+    n_factors_actual = fa_obj_init.loadings_.shape[1]
+    print(f"Запрошено факторов: {n_factors_requested}, выделено алгоритмом: {n_factors_actual}")
 
     # Матрица нагрузок
     load_obj_init = pd.DataFrame(
         fa_obj_init.loadings_,
         index=fa_data_init.columns,
-        columns=[f'F{i + 1}' for i in range(n_factors_init)]
+        columns=[f'F{i + 1}' for i in range(n_factors_actual)]
     ).round(3)
 
     print("\nМатрица нагрузок (объекты, до очистки):")
@@ -275,7 +282,7 @@ try:
     variance_init_dict = {
         "Показатель": ["SS Loadings", "Proportion Var", "Cumulative Var"]
     }
-    for j in range(n_factors_init):
+    for j in range(n_factors_actual):  # <-- Цикл только по реальным факторам
         variance_init_dict[f"Фактор {j + 1}"] = [
             round(float(variance_init[0][j]), 4),
             round(float(variance_init[1][j]), 4),
@@ -289,7 +296,7 @@ try:
     print(variance_init_df.to_string(index=False))
 
 except np.linalg.LinAlgError:
-    print("⚠ Ошибка: матрица сингулярна, тесты и ФА для объектов (до очистки) не вычислены.")
+    print("Ошибка: матрица сингулярна, тесты и ФА для объектов (до очистки) не вычислены.")
 except Exception as e:
     print(f"Ошибка при ФА объектов (до очистки): {e}")
 
