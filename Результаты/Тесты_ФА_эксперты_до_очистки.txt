@@ -1,0 +1,3 @@
+KMO: 0.354
+Bartlett chi2: 4.652
+Bartlett p: 0,5891
